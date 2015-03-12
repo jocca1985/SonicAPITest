@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.8.2/jquery.min.js" type="application/javascript"></script>
+<script src="pitchDetection.js" type="application/javascript"></script>
+<script type="application/javascript">
+
+var accessId = '2b61f518-f576-407b-8217-fb82a6d07a96';
+var taskUrl = 'process/elastiqueTune';
+var parameters = { blocking: false, format: 'json', access_id: accessId };
+
+// the values for these parameters were taken from the corresponding controls in the demo form
+parameters['input_file'] = localStorage.fileID;
+parameters['pitch_semitones'] = '0';
+parameters['tempo_factor'] = '1';
+parameters['formant_semitones'] = '0';
+parameters['pitchcorrection_percent'] = '100';
+parameters['pitchdrift_percent'] = '50';
+parameters['midi_pitches'] = localStorage.midi_pitches;
+//console.log(JSON.stringify(localStorage.midi_pitches));
+function onTaskStarted(data) {
+    var fileId = data.file.file_id;
+    // request task progress every 500ms
+    var polling = setInterval(pollTaskProgress, 500);
+   
+    function pollTaskProgress() {
+        $.ajax({ url: 'https://api.sonicAPI.com/file/status?file_id=' + fileId + '&access_id=' + accessId + '&format=json', 
+                 crossDomain: true, success: function(data) {
+            if (data.file.status == 'ready') {
+                onTaskSucceeded(fileId);
+                clearInterval(polling);
+            } else if (data.file.status == 'working') {
+                $('#result').text(data.file.progress + '% done');
+            }
+        }});
+    }
+}
+
+function onTaskSucceeded(fileId) {
+    // create HTML5 audio player
+    var downloadUrl = 'https://api.sonicAPI.com/file/download?file_id=' + fileId + '&access_id=' + accessId + '&format=mp3-cbr';
+    var audio = '<audio src="' + downloadUrl + '" controls="controls" autoplay="autoplay">';
+    
+    $('#result').html(audio);
+}
+
+function onTaskFailed(response) {
+    var data = $.parseJSON(response.responseText);
+    var errorMessages = data.errors.map(function(error) { return error.message; });
+ 
+    $('#result').text('Task failed, reason: ' + errorMessages.join(','));
+}
+ function printValue(sliderID, textbox) {
+            var x = document.getElementById(textbox);
+            var y = document.getElementById(sliderID);
+            x.value = y.value;
+        }
+
+window.onload = function() {
+			printValue('drift', 'driftValue');
+			printValue('correction', 'correctionValue');
+			printValue('formant', 'formantValue');
+		}
+// start task when clicking on the "Start task" button
+$(document).ready(function() {
+    $('#start').click(function() {
+    	// execute an HTTP GET using the task's URL, the parameters and callback functions defined above
+        $.ajax({ url: 'https://api.sonicAPI.com/' + taskUrl, data: parameters, 
+                 success: onTaskStarted, error: onTaskFailed, crossDomain: true });
+    });
+});
+</script>
+<form>
+      <fieldset>
+        <legend>Correct parameters</legend>
+        <ul>
+          <li id="number-test-wrap">
+            <label>Begin seconds</label>
+            <div>
+              <input name="begin" type="number" />
+            </div>
+          </li>
+          <li id="number-test-wrap">
+            <label>End seconds</label>
+            <div>
+              <input name="end" type="number" />
+            </div>
+          </li>
+          <li id="range-test-wrap">
+            <label>Pitch drift</label>
+            <div>
+              <input id="drift" type="range" min="0" max="200" step="1" onchange="printValue('drift', 'driftValue')"/>
+			  <input id="driftValue" type="text" size="2">
+            </div>
+          </li>
+          <li id="range-test-wrap">
+            <label>Pitch correction</label>
+            <div>
+              <input id="correction" type="range" min="0" max="100" step="1" onchange="printValue('correction', 'correctionValue')"/>
+			  <input id="correctionValue" type="text" size="2">
+            </div>
+          </li>
+          <li id="range-test-wrap">
+            <label>Formant semitones</label>
+            <div>
+              <input id="formant" type="range" min="-12" max="12" step="1" onchange="printValue('formant', 'formantValue')" />
+			  <input id="formantValue" type="text" size="2">
+            </div>
+          </li>
+        </ul>
+      </fieldset>
+    </form>
+<input type="button" id="start" value="Start task" />
+<div id="result" />
